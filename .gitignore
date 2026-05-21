@@ -5,6 +5,10 @@
 # Original design doc — kept locally for reference, not part of the distributable plugin.
 prd.md
 
+# Claude Code project entry point + project memory — local working notes, not part of the distributable plugin.
+CLAUDE.md
+mem/
+
 # Defensive: in case a memory file/dir gets created inside the repo by mistake.
 # (The real memory lives at ~/.claude/projects/<encoded-cwd>/memory/, outside the repo.)
 memory/
