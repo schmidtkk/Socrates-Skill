@@ -1,0 +1,14 @@
+{
+  "name": "socratic",
+  "owner": {
+    "name": "weidongguo"
+  },
+  "plugins": [
+    {
+      "name": "socratic",
+      "source": "./plugins/socratic",
+      "description": "Socratic-inspired mechanism exploration: /socratic:ask grills the user, /socratic:think self-grills and produces a verifiable mechanism model. High-taste questioning (Paul/Elder × PRD-quality axes), candidate-answer drafting, mode-split startup.",
+      "version": "0.1.0"
+    }
+  ]
+}

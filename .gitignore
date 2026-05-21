@@ -1,0 +1,27 @@
+# Per-session artifacts produced by /socratic:think (or any session writing here).
+# Session-local, not part of the plugin.
+.socrates/
+
+# Original design doc — kept locally for reference, not part of the distributable plugin.
+prd.md
+
+# Defensive: in case a memory file/dir gets created inside the repo by mistake.
+# (The real memory lives at ~/.claude/projects/<encoded-cwd>/memory/, outside the repo.)
+memory/
+MEMORY.md
+
+# Other Claude Code / teamkit artifacts that occasionally land in cwd.
+.agent-runs/
+.claude/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Python / Node bits in case anyone adds tooling later
+__pycache__/
+*.pyc
+node_modules/
