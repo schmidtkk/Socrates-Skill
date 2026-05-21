@@ -137,7 +137,7 @@ Every `/socratic:think` run, and every `/socratic:ask` run that completes Synthe
       01-webfetch-hosalimans-2022.md
       …
     transcript.md            # ASK mode: the actual Q&A trace
-    mechanism.md             # 9-section synthesis (§8). Always written at session end.
+    mechanism.md             # §0 Feynman Synthesis + §1-§9 audit (per §8). Always written at session end.
 ```
 
 The slug derivation: lowercase the topic, replace non-alphanumerics with `-`, truncate to 40 chars.
@@ -201,7 +201,7 @@ After each user answer:
 
 When budget hit, or user said `enough`, or no kept candidates remain, run the synthesis. This is **two passes**, not one.
 
-#### 5.4.1 Pass 1 — Fill §1-§9 from the transcript
+#### 5.4.1 Pass 1 — Fill §1-§9 from the transcript [resolves C5]
 
 Read these inputs:
 - `transcript.md` — every question + user's selected option + their free-text "why"
@@ -259,7 +259,7 @@ When drafting the 3–4 selectable answers for each grill question, you MUST fol
 - Provide fewer than 3 or more than 4 options (Other excluded). Fewer kills coverage, more overloads cognition.
 - Use options as a vehicle to teach. The user's job is to choose / write Other / explain why. Your job is to draft and listen.
 
-### Phase boundary — when teaching IS allowed
+### Phase boundary — when teaching IS allowed [resolves C6]
 
 The "no teaching" rules above apply **only during the Socratic phase** (candidate-answer drafting, before the question budget is exhausted). Once synthesis begins (§5.4 / §7.6), the contract flips: §0 Feynman Synthesis MUST teach — write plain-language prose that a smart non-specialist can follow. The two phases are layered, not contradictory:
 
@@ -281,17 +281,21 @@ If you find yourself wanting to teach during a candidate-answer draft, you are c
 
 ### 7.1 Startup — mode-split
 
+The mode-split only affects **where candidates come from** (training data vs. real material). Probe execution always happens at §7.5, regardless of mode — *after* the review checkpoint, *before* synthesis. The diagram is the same for both modes; only step 1 differs.
+
 For `concept` mode → **think-then-fetch**:
-1. Skip priming. Generate candidates immediately based on Claude's training data + the topic string.
-2. During Synthesis (§8), for each `Evidence` claim, run WebSearch + WebFetch to authoritative sources to verify.
+1. Skip priming. Generate candidates immediately based on Claude's training data + the topic string. (No `priming/` directory is written.)
+2. Continue to §7.2 (virtual self-check) → §7.3 (critic) → §7.4 (review checkpoint) → §7.5 (probes — for concept, these are typically WebSearch + WebFetch against authoritative sources, with their outputs landing in `.socrates/<ts>/evidence/`) → §7.6 (synthesis).
 
 For `project` mode → **fetch-then-think**:
 1. **Priming first** (write to `.socrates/<ts>/priming/`):
-   - Read `README.md`, `CLAUDE.md`, `pyproject.toml`/`package.json` if present.
+   - Read `README.md`, `pyproject.toml`/`package.json`, and any `CLAUDE.md` if present. **Note:** if `CLAUDE.md` is gitignored (common in active development), the resulting `mechanism.md` may silently depend on untracked local context — record this in `priming/00-sources.md` as `CLAUDE.md included (local-only, not in git)` so §0 / §9 can disclose it later.
    - Glob top-level structure (`ls -la` equivalent via Bash, max 100 entries).
    - If `<topic>` is a path, Read its main files (`*.py`, `*.ts`, `*.js`, `*.go`, `*.md` up to 5 files).
    - Grep for likely entry symbols (`main`, `__init__`, `default export`, route registrations).
-2. THEN generate candidates, grounded in the priming material.
+2. THEN generate candidates, grounded in the priming material. Continue through §7.2 → §7.3 → §7.4 → §7.5 (probes are Read/Grep/Glob/read-only Bash, with possible WebFetch for upstream docs) → §7.6.
+
+If the user picks **Skip-grill** at the §7.4 checkpoint, §7.5 is skipped entirely. Synthesis then runs from whatever exists in `priming/` (for project) or from candidates.json question text + training data alone (for concept, since concept has no priming). The Skip-grill path is the lowest-rigor path — §0 must explicitly say so.
 
 ### 7.2 Virtual self-check
 
@@ -327,7 +331,14 @@ Same critic gate as §2.2. Write the full candidate list with verdicts to `candi
 ]
 ```
 
-At this point all entries have `final_status` matching `keep_or_drop`. The next step may modify it.
+`keep_or_drop` is the critic's preliminary verdict (present-tense, values `keep` / `drop`). `final_status` is the canonical post-user-review state (past-participle, values `kept` / `dropped_by_critic` / `dropped_by_user` / `added_by_user`). They are NOT synonymous string-wise — `final_status: "keep"` is invalid. At Pass-1 critic time, set both:
+
+| Critic verdict | `keep_or_drop` | `final_status` (initial) |
+|---|---|---|
+| Question survives both axes | `"keep"` | `"kept"` |
+| Question fails any axis | `"drop"` | `"dropped_by_critic"` |
+
+After the §7.4 review checkpoint, only `final_status` is mutated (the user can transition `kept` → `dropped_by_user`, or `added_by_user` entries can appear). `keep_or_drop` stays frozen as the critic's original judgment, useful for post-mortem analysis. Downstream code MUST filter on `final_status`, never on `keep_or_drop`.
 
 ### 7.4 **Question list review checkpoint (MANDATORY user touchpoint)**
 
@@ -357,19 +368,21 @@ THINK mode is NOT fully silent. After the critic finishes, the user reviews the 
    - **Drop some questions** — pick Other and type the IDs (e.g., `drop Q2, Q5`)
    - **Add a question** — pick Other and type your question (e.g., `add: why doesn't this fail under <X>?`)
    - **Pivot — regenerate from a different angle** — pick Other and optionally describe the angle (e.g., `pivot: focus on failure modes only`)
-   - **Skip the question phase entirely** — synthesize from priming + Claude's training knowledge only (lowest rigor)
+   - **Skip-grill — go straight to synthesis** — type `skip-grill` or `synthesize-now` in Other to abandon all questions and synthesize from priming + training knowledge alone (lowest rigor)
 
-   The question text MUST include the skip/enough/pivot tail line (§2.4) so the contract is consistent.
+   *Note on keyword choice:* the option above is `skip-grill`, NOT `skip`. The bare `skip` keyword in §2.4 means "skip this single question and move to the next" (ASK mode), so reusing it here would be ambiguous. At the THINK review checkpoint, type `skip-grill` (or `synthesize-now`) when you want to abandon the whole question phase.
+
+   The question text MUST include the §2.4 tail line so the regular `skip / enough / pivot` keywords stay available too.
 
 3. **Apply the user's decision:**
 
    | User choice | Action |
    |---|---|
    | Proceed | Continue to §7.5 with the kept set unchanged. |
-   | Drop X | For each named ID, set `final_status: "dropped_by_user"`. Continue. |
-   | Add Y | Append `{id: "Q-user-1", question: Y, final_status: "added_by_user", quality_scores: null, probe: "to be determined"}` to `candidates.json`. Run a *fast* critic pass on Y only — if it fails any quality axis, flag in chat ("your added question doesn't pass <axis>; proceed anyway? y/n") but ultimately respect the user's add. Continue. |
+   | Drop X | For each named ID, set `final_status: "dropped_by_user"`. Continue to §7.5. |
+   | Add Y | Append `{id: "Q-user-1", question: Y, final_status: "added_by_user", quality_scores: null, probe: null}` to `candidates.json`. Run a *fast* critic pass on Y only — if it fails any quality axis, flag in chat ("your added question doesn't pass <axis>; proceed anyway? y/n") but ultimately respect the user's add. **Then immediately derive a concrete probe** for Y (subject to §2.3 read-only rule) and set `probe` to it before continuing. Without this step §7.5 has no probe to run. |
    | Pivot | Discard current `candidates.json`, regenerate ≥ 8 fresh candidates using the user's angle hint, run critic, GOTO step 1. Pivot is allowed AT MOST ONCE per session; a second pivot request becomes a hard Proceed. |
-   | Skip | Mark all kept entries as `final_status: "dropped_by_user"`. Jump to §7.6 (Synthesis from priming only). |
+   | Skip-grill | Mark all `kept` entries as `final_status: "dropped_by_user"`. Skip §7.5 entirely (no probes). Jump to §7.6 Synthesis. In synthesis, every §1-§9 claim that can't be grounded in priming will be tagged `[unverified]` (THINK mode) — including concept-mode sessions which have no priming at all, in which case nearly everything will be `[unverified]` and §0 must say so. |
 
 4. **Update `candidates.json`** on disk to reflect the final statuses.
 
@@ -441,10 +454,11 @@ Exactly **4 paragraphs**, one per SCQA element, each 60–120 words (total 240�
 
 - **SCQA shape** — exactly 4 paragraphs, in S/C/Q/A order. Mark them with the labels (e.g., `**Situation.** …`).
 - **Toulmin warrants** — every claim followed by "because" / "this works because" / "the reason is" linking grounds to claim. Warrants make the logical chain *visible*; without them §0 is just prose.
-- **Verification-tag inheritance (C2):** every claim in §0 carries the tag of its underlying §1-§9 section. Use inline markers:
-  - `^v` after a claim drawn from `[verified: …]` source
-  - `^u` after a claim drawn from `[unverified]` or `[user-asserted]` source
-  - `^a` after a claim drawn from `[assumption]` source
+- **Verification-tag inheritance (C2):** every claim in §0 carries the tag of its underlying §1-§9 section. Use **four** inline markers (do not collapse — `^p` and `^u` look similar but mean different things, and the difference is load-bearing for C4):
+  - `^v` after a claim drawn from `[verified: evidence/NN]` source (probe verified it)
+  - `^p` after a claim drawn from `[user-asserted]` source (ASK mode only — the user said it; ownership is theirs, not Claude's)
+  - `^u` after a claim drawn from `[unverified]` source (THINK mode — Claude couldn't probe it, e.g., Skip-grill path or budget exhausted before probing)
+  - `^a` after a claim drawn from `[assumption]` source (Claude inferred it to make synthesis cohere)
 - **Section cross-references** — bracket-cite the underlying section after each claim (e.g., `[§3]`, `[§5]`). Reader can drill down for detail.
 - **Anti-alternative reference (C1):** at least one explicit `"but not X, because Y"` or `"rather than Z, which would fail because…"` clause, pointing to §5. If §5 is `N/A`, say so: `"alternatives were not investigated [§5 N/A]"`.
 - **Gap honesty (C3):** any §1-§9 section marked `N/A` MUST be acknowledged in §0 (e.g., `"we did not investigate failure modes [§7 N/A], so the story below treats the mechanism as universally robust — an unverified claim"`). No silent gap-filling.
@@ -456,8 +470,22 @@ Exactly **4 paragraphs**, one per SCQA element, each 60–120 words (total 240�
 - Be a bullet list. Continuous prose only.
 - Restate §1-§9 verbatim. §0 *threads*; §1-§9 enumerates.
 - Exceed 4 paragraphs or 480 words.
-- Drop verification markers (`^v` / `^u` / `^a`). Their absence is a confidence-leak.
+- Drop verification markers (`^v` / `^p` / `^u` / `^a`). Their absence is a confidence-leak.
 - Smooth over `N/A` sections with confident prose. Name the gap.
+
+#### Constraint precedence (when something has to yield)
+
+If §1-§9's actual content makes it impossible to satisfy every MUST simultaneously, yield in the order below — never sacrifice the higher item to save the lower:
+
+1. **Gap honesty (C3)** — never sacrifice. If a section is `N/A`, you must name it. No exceptions.
+2. **Verification-tag inheritance (C2)** — never sacrifice. Every claim keeps its `^v/^p/^u/^a` marker even if it makes a sentence clunky.
+3. **Authorship-aware framing (C4, ASK mode only)** — never sacrifice in ASK mode. Better to write awkward "your account converges on…" prose than smooth "X is true" prose.
+4. **Anti-alternative reference (C1)** — must include at least one. If §5 is `N/A`, the alternative reference becomes a *meta* gap acknowledgment ("alternatives were not investigated [§5 N/A]").
+5. **SCQA paragraph labels** — drop the bold `**Situation.**` labels before merging paragraphs together. Spirit > letter.
+6. **Per-paragraph word count (60–120)** — flexible by ±20% in either direction.
+7. **Total word cap (480)** — flexible by +10% if and only if 1-6 above are all preserved.
+
+If you find yourself yielding past level 4, that's a signal §1-§9 has bigger problems than §0 can compensate for — append to §9 Remaining uncertainty and consider this a near-failed synthesis.
 
 #### ASK mode specifics (C4)
 
@@ -485,7 +513,7 @@ If §1-§9 cannot be threaded into 4 coherent paragraphs (contradictory claims, 
 
 **Situation.** <60–120 words: the surface view, in plain language, with one concrete example. [§1] >
 
-**Complication.** <60–120 words: the pressure / problem the surface doesn't explain, with warrant. [§2]^v >
+**Complication.** <60–120 words: the pressure / problem the surface doesn't explain, with warrant. [§2]^v or ^p (ASK mode) >
 
 **Question.** <60–120 words: the mechanism question that emerges. Why this and not the obvious thing? [§5]^u or [§5 N/A] >
 
