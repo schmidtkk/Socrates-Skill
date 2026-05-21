@@ -1,26 +1,41 @@
 ---
 name: socratic
-description: Socratic-inspired mechanism exploration. Loads when the user invokes /socratic:ask or /socratic:think, or explicitly asks for "Socratic questioning", "mechanism grilling", "help me reveal the mechanism behind X", or "grill me on <topic> through mechanism questions". Do NOT auto-load for general Q&A, debugging, or plan reviews — those are handled by grill-me / Plan / other skills.
+description: Socratic-Feynman method for mechanism exploration. Loads when the user invokes /socratic:ask or /socratic:think, or explicitly asks for "Socratic questioning", "Feynman synthesis", "mechanism grilling", "help me reveal the mechanism behind X", or "grill me on <topic> through mechanism questions". Do NOT auto-load for general Q&A, debugging, or plan reviews — those are handled by grill-me / Plan / other skills.
 ---
 
-# Socratic Skill
+# Socratic Skill — the Socratic-Feynman method
 
-This skill exposes two slash commands:
+A two-phase discipline for understanding the mechanism behind something:
 
-| Command | Mode | Audience | Output |
+- **Socratic phase (pre-synthesis):** ask sharp, discriminative questions to find the gaps in understanding. Question quality matters more than quantity.
+- **Feynman phase (post-grill):** re-articulate the answers as a plain-language story. If you cannot tell the story coherently, you have not understood — and the gap in articulation becomes the next question.
+
+The plugin exposes two slash commands, both running both phases:
+
+| Command | Socratic phase | Feynman phase | User involvement |
 |---|---|---|---|
-| `/socratic:ask <concept\|project> <topic>` | dialogue | the **user** | live grill, then a synthesis at session end |
-| `/socratic:think <concept\|project> <topic>` | silent self-grill | **Claude** | `.socrates/<ts>/mechanism.md` + supporting artifacts |
+| `/socratic:ask <concept\|project> <topic>` | Claude grills the user one question at a time | Claude synthesizes §0 from the user's answers + transcript | answers every grill question |
+| `/socratic:think <concept\|project> <topic>` | Claude grills itself, user reviews the question list once | Claude synthesizes §0 from §1-§9 it filled itself | one review checkpoint on the question list |
 
-It is **not** a generic chatbot. It enforces taste: fewer questions, sharper questions, evidence-grounded synthesis.
+Both produce a `mechanism.md` whose header is a **§0 Feynman Synthesis** (4 SCQA paragraphs threading the mechanism into a story), followed by §1-§9 as the structured audit.
+
+It is **not** a generic chatbot, code reviewer, or planner. It enforces taste: fewer questions, sharper questions, evidence-grounded synthesis.
 
 ---
 
 ## 0. Identity statement (do not deviate)
 
-This skill is **Socratic-inspired**, not Socratic-pure. It deviates from classical Socratic dialogue on one point: Claude provides **candidate answers** alongside each question (as AskUserQuestion options). This trades some Socratic "tutor only asks" purity for usability — and is mitigated by mandatory follow-up ("why did you pick that one?") and Other-channel handling (see §6).
+The skill is **Socratic-Feynman**, not Socratic-pure or Feynman-alone. Two design choices need stating:
 
-Everything else follows Socratic discipline: probe assumptions, demand evidence, surface alternatives, examine consequences.
+1. **Why not Socratic-pure:** Claude provides **candidate answers** alongside each grill question (as AskUserQuestion options). This trades some classical Socratic "tutor only asks" purity for usability — mitigated by the mandatory follow-up ("why did you pick that?") and the Other-channel (see §6).
+
+2. **Why add Feynman:** A pure Socratic transcript is a list of Q-and-A — *scattered beads*, not a *threaded chain*. The Feynman synthesis (see §8 §0) re-articulates the answers as plain prose, structured by SCQA and made traceable by explicit Toulmin warrants. If the prose cannot be made to flow, the failure points to a gap that returns to §9 Remaining uncertainty.
+
+**Phase boundary (CRITICAL):** the contract flips at synthesis time.
+- *Pre-synthesis (Socratic phase):* questions are open, alternatives kept alive, no teaching, no candidate-answer is marked "correct".
+- *Post-grill (Feynman phase):* §0 is a plain-language explanation. Teaching IS the discipline here. The boundary is "once the question budget is exhausted".
+
+The synthesis MUST preserve what the Socratic phase produced — verification tags, anti-alternatives, ungrilled gaps. See §8 for the explicit Pass 2 contract that prevents Feynman from silently smoothing over Socratic gaps.
 
 ---
 
@@ -182,9 +197,49 @@ After each user answer:
 4. Re-run a *fast* critic on remaining kept candidates given new information. Drop any that are now answered or stale. If too few remain, regenerate.
 5. Pick next highest-impact question.
 
-### 5.4 Synthesis at session end
+### 5.4 Synthesis at session end (two passes)
 
-When budget hit, or user said `enough`, or no kept candidates remain, run §8 (Synthesis). Write `mechanism.md`. Present a 5-line summary in chat with a link to the file.
+When budget hit, or user said `enough`, or no kept candidates remain, run the synthesis. This is **two passes**, not one.
+
+#### 5.4.1 Pass 1 — Fill §1-§9 from the transcript
+
+Read these inputs:
+- `transcript.md` — every question + user's selected option + their free-text "why"
+- `self-check.json` — the ritual answers (user's stated understanding level, gap focus, materials seen)
+- `evidence/*` — anything probed during the session (rare in ASK mode but possible)
+
+Assign each claim the user articulated to its §1-§9 section. Use this mapping as a guide:
+
+| Section | What goes here from a typical transcript |
+|---|---|
+| §1 Surface | The naive description the user gave (often from ritual `understanding_level`). |
+| §2 Pressure | What problem/constraint the user identified as motivating the design. Often surfaces in Q1-Q2 answers. |
+| §3 Core mechanism | The mechanism the user converged on (or the strongest candidate after follow-ups). |
+| §4 Why this form | Reasons the user gave for the specific shape (often surfaces in Q3-Q4). |
+| §5 Why not alternatives | Alternatives the user explicitly considered and rejected (often through Q4 "perspective" questions). N/A if not probed. |
+| §6 Invariants | Properties the user said the mechanism preserves. N/A if not probed. |
+| §7 Failure modes | Edge cases / failure conditions surfaced in Q5 "consequence" questions. N/A if not probed. |
+| §8 Evidence | Citations from `evidence/` if any. In ASK mode, the user's stated material in `self-check.json.files_seen` is also a weak form of evidence. |
+| §9 Remaining uncertainty | Questions skipped or partially answered; sections marked N/A above; any contradictions Claude noticed in the transcript. |
+
+**Verification tagging is mandatory.** For every non-trivial claim in §1-§7, decide its tag:
+
+- `[verified: evidence/NN]` — only if a probe in `evidence/` directly supports it.
+- `[user-asserted]` — the user said it, no probe verified. Default for most ASK-mode claims.
+- `[assumption]` — neither the user nor a probe established it; Claude inferred it to make the synthesis cohere. Treat with explicit caution.
+
+In ASK mode the dominant tag is `[user-asserted]`. That's expected — but it must be honored by Pass 2.
+
+#### 5.4.2 Pass 2 — Write §0 Feynman Synthesis
+
+Re-read your own §1-§9 from Pass 1. Then write §0 at the top of `mechanism.md` per the full contract in §8 (Synthesis template). Key §0 requirements specific to ASK mode:
+
+- **Authorship-aware framing:** use "the model you traced converges on…" / "your account so far is that…" — not "X is true". The user owns their answers.
+- All other §8 §0 requirements (SCQA shape, Toulmin warrants, tag inheritance, anti-alternative reference, gap honesty, ladder oscillation) apply identically.
+
+#### 5.4.3 Finish
+
+Write the full `mechanism.md` (§0 followed by §1-§9). Present a 5-line summary in chat with the file path so the user can read.
 
 ---
 
@@ -203,6 +258,17 @@ When drafting the 3–4 selectable answers for each grill question, you MUST fol
 - Tag an option as "(correct)" or "(recommended)". This is not a quiz; you do not know the answer.
 - Provide fewer than 3 or more than 4 options (Other excluded). Fewer kills coverage, more overloads cognition.
 - Use options as a vehicle to teach. The user's job is to choose / write Other / explain why. Your job is to draft and listen.
+
+### Phase boundary — when teaching IS allowed
+
+The "no teaching" rules above apply **only during the Socratic phase** (candidate-answer drafting, before the question budget is exhausted). Once synthesis begins (§5.4 / §7.6), the contract flips: §0 Feynman Synthesis MUST teach — write plain-language prose that a smart non-specialist can follow. The two phases are layered, not contradictory:
+
+| Phase | Behavior | Lives in |
+|---|---|---|
+| Pre-synthesis (Socratic) | Ask, don't teach. Keep alternatives open. | §5.2-5.3 (ASK) / §7.3-7.5 (THINK) |
+| Post-grill (Feynman) | Explain plainly. Thread answers into one story. | §5.4.2 (ASK) / §7.6.2 (THINK), per §8 §0 contract |
+
+If you find yourself wanting to teach during a candidate-answer draft, you are crossing the boundary — defer that articulation to §0.
 
 ### After the answer
 
@@ -231,9 +297,9 @@ For `project` mode → **fetch-then-think**:
 
 Claude fills out a self-check JSON on its own behalf — what *Claude* currently believes about the topic, what's uncertain, what evidence exists. Same schema as §5.1's `self-check.json` but `"mode": "think"` and `"virtual": true`.
 
-### 7.3 Candidate generation + critic + verification
+### 7.3 Candidate generation + critic
 
-Same critic gate as §2.2, but write the full candidate list with verdicts to `candidates.json`:
+Same critic gate as §2.2. Write the full candidate list with verdicts to `candidates.json`:
 
 ```json
 [
@@ -255,22 +321,157 @@ Same critic gate as §2.2, but write the full candidate list with verdicts to `c
       "actionable": true
     },
     "keep_or_drop": "keep | drop",
-    "drop_reason": "..."
+    "drop_reason": "...",
+    "final_status": "kept | dropped_by_critic | dropped_by_user | added_by_user"
   }
 ]
 ```
 
-For each kept question, run its probe (subject to §2.3 read-only rule). Probe outputs → `evidence/`.
+At this point all entries have `final_status` matching `keep_or_drop`. The next step may modify it.
 
-### 7.4 Synthesis
+### 7.4 **Question list review checkpoint (MANDATORY user touchpoint)**
 
-Run §8 producing `mechanism.md`. Each claim in the 9 sections MUST be tagged `[verified: evidence/NN]` or `[unverified]` or `[assumption]`.
+THINK mode is NOT fully silent. After the critic finishes, the user reviews the kept question list before any probes run. This is the one place where Claude's question selection meets human judgment in THINK mode.
+
+**Steps:**
+
+1. **Print the kept list to chat** as a compact markdown table:
+
+   ```
+   Claude wants to pursue these N questions:
+
+   | ID  | Paul-type    | Impact         | Question                                |
+   |-----|--------------|----------------|------------------------------------------|
+   | Q1  | assumption   | understanding  | Why is …?                                |
+   | Q2  | perspective  | verification   | Why not the obvious alternative …?        |
+   | …   | …            | …              | …                                        |
+
+   (Generated K candidates, kept N. Dropped Q-cand-3 [fails discriminative], Q-cand-7 [duplicate of Q2].)
+   ```
+
+   Also include 2–3 representative *dropped* candidates with their drop reasons. This lets the user spot a question Claude wrongly killed.
+
+2. **Issue an AskUserQuestion** asking the user what to do with the list. Exactly one question, with options:
+
+   - **Proceed with the N questions as listed** *(recommended if nothing looks off)*
+   - **Drop some questions** — pick Other and type the IDs (e.g., `drop Q2, Q5`)
+   - **Add a question** — pick Other and type your question (e.g., `add: why doesn't this fail under <X>?`)
+   - **Pivot — regenerate from a different angle** — pick Other and optionally describe the angle (e.g., `pivot: focus on failure modes only`)
+   - **Skip the question phase entirely** — synthesize from priming + Claude's training knowledge only (lowest rigor)
+
+   The question text MUST include the skip/enough/pivot tail line (§2.4) so the contract is consistent.
+
+3. **Apply the user's decision:**
+
+   | User choice | Action |
+   |---|---|
+   | Proceed | Continue to §7.5 with the kept set unchanged. |
+   | Drop X | For each named ID, set `final_status: "dropped_by_user"`. Continue. |
+   | Add Y | Append `{id: "Q-user-1", question: Y, final_status: "added_by_user", quality_scores: null, probe: "to be determined"}` to `candidates.json`. Run a *fast* critic pass on Y only — if it fails any quality axis, flag in chat ("your added question doesn't pass <axis>; proceed anyway? y/n") but ultimately respect the user's add. Continue. |
+   | Pivot | Discard current `candidates.json`, regenerate ≥ 8 fresh candidates using the user's angle hint, run critic, GOTO step 1. Pivot is allowed AT MOST ONCE per session; a second pivot request becomes a hard Proceed. |
+   | Skip | Mark all kept entries as `final_status: "dropped_by_user"`. Jump to §7.6 (Synthesis from priming only). |
+
+4. **Update `candidates.json`** on disk to reflect the final statuses.
+
+### 7.5 Probe execution
+
+For each entry with `final_status: "kept"` or `"added_by_user"`:
+
+1. Run the probe (subject to §2.3 read-only rule).
+2. Write probe output to `.socrates/<ts>/evidence/NN-<short-name>.{txt,json,md}`.
+3. Tag the question with the evidence file reference.
+
+### 7.6 Synthesis (two passes)
+
+Like ASK mode, THINK synthesis is two passes.
+
+#### 7.6.1 Pass 1 — Fill §1-§9 from candidates + evidence
+
+Read these inputs:
+- `candidates.json` (after review checkpoint, with `final_status` set per entry)
+- `evidence/*` (probe outputs from §7.5)
+- `priming/*` (only for `project` mode; READMEs, glob output, key file reads)
+- `self-check.json` (Claude's virtual self-check from §7.2)
+
+For each `candidates.json` entry with `final_status: kept` or `added_by_user` that has a probe output in `evidence/`, derive the corresponding §1-§9 claim. The question's `decision_impact` and `paul_type` hint at which section it belongs in (e.g., `paul_type: assumption` → typically §2 Pressure or §4 Why this form; `paul_type: consequence` → typically §7 Failure modes; `paul_type: perspective` → §5 Why not alternatives).
+
+**Verification tagging is mandatory.** For every claim in §1-§7:
+- `[verified: evidence/NN]` — a probe in `evidence/` directly supports it.
+- `[unverified]` — derived from candidate question text or self-check, but no probe ran (e.g., user picked `Skip` at the review checkpoint).
+- `[assumption]` — neither probe nor priming established it; Claude inferred to make synthesis cohere. Treat with explicit caution in Pass 2.
+
+Sections without any verifiable claim get `N/A: <one-sentence reason>` — the absence itself is signal (e.g., `N/A: question Q-cand-7 about alternatives was dropped by user at review checkpoint`).
+
+#### 7.6.2 Pass 2 — Write §0 Feynman Synthesis
+
+Re-read your own §1-§9 from Pass 1. Then write §0 at the top of `mechanism.md` per the full contract in §8.
+
+THINK mode does NOT need authorship-aware framing (Claude wrote both §1-§9 and §0). Use direct assertion: "The mechanism is X^v, because Y^v [§3, §4]". But the other constraints from §8 §0 apply identically — SCQA shape, Toulmin warrants, tag inheritance, anti-alternative reference, gap honesty, ladder oscillation, plain language.
+
+#### 7.6.3 Finish
+
+Write the full `mechanism.md` (§0 followed by §1-§9). Print a 5-line chat summary including the file path.
 
 ---
 
 ## 8. Synthesis template (`mechanism.md`)
 
-9 sections, **all required**. If a section has no content because evidence is insufficient, write `N/A: <one-sentence reason why this section couldn't be filled — that reason is itself a signal>`.
+`mechanism.md` has **10 sections**: §0 (Feynman Synthesis) at the top, followed by §1-§9 (the structured audit). §0 is produced by **Pass 2** of synthesis (after §1-§9 are filled by Pass 1 — see §5.4 / §7.6 for mode-specific pass-1 mechanics).
+
+§1-§9 are **all required**. If a section has no content because evidence is insufficient, write `N/A: <one-sentence reason — that reason is itself a signal>`.
+
+Tag every non-trivial claim in §1-§7 with `[verified: evidence/NN]`, `[user-asserted]` (ASK mode), `[unverified]` (THINK mode), or `[assumption]`. §8 and §9 are inherently meta and don't need tags.
+
+### 8.0 The §0 Feynman Synthesis contract (Pass 2)
+
+§0 sits at the very top of `mechanism.md`. It is a **plain-language explanation** that threads §1-§9 into a single causal story. Its job is to make a smart non-specialist able to follow the mechanism — *and* to expose any gap that resists threading.
+
+Why it exists: a checklist of 9 sections is *scattered beads*, not a *logical chain*. §0 is the chain.
+
+#### Format
+
+Exactly **4 paragraphs**, one per SCQA element, each 60–120 words (total 240–480 words):
+
+1. **Situation** — paint the surface (draws from §1). Plain language, concrete enough that the reader sees the thing.
+2. **Complication** — the pressure that surface doesn't explain (draws from §2). Why the naive view is insufficient.
+3. **Question** — the specific mechanism question that emerges. Often phrased as "so why X?" or "how does Y reconcile with Z?".
+4. **Answer** — the mechanism + its justification + the alternatives it beats (draws from §3-§7). End with the strongest evidence or, if unverified, the assumption made.
+
+#### MUST
+
+- **SCQA shape** — exactly 4 paragraphs, in S/C/Q/A order. Mark them with the labels (e.g., `**Situation.** …`).
+- **Toulmin warrants** — every claim followed by "because" / "this works because" / "the reason is" linking grounds to claim. Warrants make the logical chain *visible*; without them §0 is just prose.
+- **Verification-tag inheritance (C2):** every claim in §0 carries the tag of its underlying §1-§9 section. Use inline markers:
+  - `^v` after a claim drawn from `[verified: …]` source
+  - `^u` after a claim drawn from `[unverified]` or `[user-asserted]` source
+  - `^a` after a claim drawn from `[assumption]` source
+- **Section cross-references** — bracket-cite the underlying section after each claim (e.g., `[§3]`, `[§5]`). Reader can drill down for detail.
+- **Anti-alternative reference (C1):** at least one explicit `"but not X, because Y"` or `"rather than Z, which would fail because…"` clause, pointing to §5. If §5 is `N/A`, say so: `"alternatives were not investigated [§5 N/A]"`.
+- **Gap honesty (C3):** any §1-§9 section marked `N/A` MUST be acknowledged in §0 (e.g., `"we did not investigate failure modes [§7 N/A], so the story below treats the mechanism as universally robust — an unverified claim"`). No silent gap-filling.
+- **Ladder of abstraction (C8):** every paragraph contains at least one concrete reference — to `evidence/NN` if verified, or to an example tagged `(invented for illustration; no evidence basis)` if not.
+- **Plain language** — no jargon without immediate gloss. Assume the reader knows the field but not this specific design.
+
+#### MUST NOT
+
+- Be a bullet list. Continuous prose only.
+- Restate §1-§9 verbatim. §0 *threads*; §1-§9 enumerates.
+- Exceed 4 paragraphs or 480 words.
+- Drop verification markers (`^v` / `^u` / `^a`). Their absence is a confidence-leak.
+- Smooth over `N/A` sections with confident prose. Name the gap.
+
+#### ASK mode specifics (C4)
+
+In ASK mode, §0 uses **authorship-aware framing**: "the model you traced converges on…" / "your account so far is that…" / "by the answers you gave, the mechanism appears to be…". Never assert the user's answers as truth. The user's words are theirs; Claude's job in §0 is to *re-articulate* them clearly, not to *endorse* them.
+
+#### Failure handling
+
+If §1-§9 cannot be threaded into 4 coherent paragraphs (contradictory claims, too many gaps, missing pressure), do not force it. Instead:
+
+1. Write §0 with whatever does thread.
+2. In §9 Remaining uncertainty, add a new entry: `"§0 could not bridge §X → §Y because <reason>; this is a real conceptual gap, not a writing failure"`.
+3. The unbridgeable gap is itself a finding — surface it, don't hide it.
+
+### 8.1 Template
 
 ```markdown
 # Mechanism Model — <topic>
@@ -280,35 +481,45 @@ Run §8 producing `mechanism.md`. Each claim in the 9 sections MUST be tagged `[
 **Topic mode:** concept | project
 **Session:** `.socrates/<ts>/`
 
+## 0. Feynman Synthesis
+
+**Situation.** <60–120 words: the surface view, in plain language, with one concrete example. [§1] >
+
+**Complication.** <60–120 words: the pressure / problem the surface doesn't explain, with warrant. [§2]^v >
+
+**Question.** <60–120 words: the mechanism question that emerges. Why this and not the obvious thing? [§5]^u or [§5 N/A] >
+
+**Answer.** <60–120 words: the mechanism, with at least one Toulmin warrant linking it to the pressure, an anti-alternative clause, and an evidence/assumption tag. [§3]^v, [§4]^v, "but not X^u, which would fail because Y [§5]". >
+
+---
+
 ## 1. Surface
-<What does this thing look like on the outside? The naive description.>
+<naive description, with verification tags on claims>
 
 ## 2. Pressure
-<What problem/constraint forced this design? What pressure is it responding to?>
+<problem/constraint that forced the design, tagged>
 
 ## 3. Core mechanism
-<What is the actual mechanism doing the work? The one-sentence "aha".>
+<the actual mechanism, tagged>
 
 ## 4. Why this form
-<Why is *this specific* form (definition / equation / architecture / sequence of steps) the right shape for the pressure?>
+<why this specific shape, tagged>
 
 ## 5. Why not alternatives
-<What 1–3 alternative designs exist? Why do they fail under the constraints?>
+<1–3 alternatives + why they fail, tagged; or N/A if not probed>
 
 ## 6. Invariants / properties
-<What does this mechanism guarantee or preserve?>
+<what it preserves, tagged; or N/A>
 
 ## 7. Failure modes
-<Under what conditions does it break? What counterexamples or edge cases?>
+<conditions under which it breaks, tagged; or N/A>
 
 ## 8. Evidence
-<Per-claim citation. Reference `evidence/NN` files or external URLs.>
+<per-claim citation, references to evidence/NN files or external URLs>
 
 ## 9. Remaining uncertainty
-<What is still unclear? What probes would resolve it? What questions went unanswered in the budget?>
+<unresolved questions; sections marked N/A above; contradictions noticed during Pass 2>
 ```
-
-Tag every non-trivial claim in sections 1-7 with `[verified: evidence/NN]`, `[unverified]`, or `[assumption]`. Sections 8 and 9 are inherently meta and don't need tags.
 
 ---
 

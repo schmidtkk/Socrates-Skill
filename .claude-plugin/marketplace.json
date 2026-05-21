@@ -7,7 +7,7 @@
     {
       "name": "socratic",
       "source": "./plugins/socratic",
-      "description": "Socratic-inspired mechanism exploration: /socratic:ask grills the user, /socratic:think self-grills and produces a verifiable mechanism model. High-taste questioning (Paul/Elder × PRD-quality axes), candidate-answer drafting, mode-split startup.",
+      "description": "The Socratic-Feynman method as a Claude Code plugin. Ask sharp Socratic questions to find the gaps (Paul/Elder × quality-axes critic, candidate-answer drafting). Synthesize plainly (Feynman §0: SCQA paragraphs with Toulmin warrants and verification-tag inheritance) to verify understanding. /socratic:ask grills the user; /socratic:think self-grills with one user review checkpoint.",
       "version": "0.1.0"
     }
   ]

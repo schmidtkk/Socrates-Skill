@@ -1,9 +1,9 @@
 ---
-description: Self-grill silently and produce a verifiable mechanism model at .socrates/<ts>/mechanism.md. Usage: /socratic:think <concept|project> <topic>
+description: Self-grill with one user review checkpoint after question selection; produce a verifiable mechanism model at .socrates/<ts>/mechanism.md. Usage: /socratic:think <concept|project> <topic>
 argument-hint: <concept|project> <topic>
 ---
 
-Run the **socratic skill in THINK mode** (silent self-grill, no user dialogue).
+Run the **socratic skill in THINK mode** (self-grill with one MANDATORY user review checkpoint after the question list is drafted — see SKILL.md §7.4).
 
 Raw arguments: `$ARGUMENTS`
 

@@ -1,11 +1,16 @@
-# Socrates Skill
+# Socrates Skill — the Socratic-Feynman method as a Claude Code plugin
 
-A Claude Code plugin that turns Claude into a Socratic interviewer when you want to **understand the mechanism behind something**, not just learn its surface. Two commands:
+A two-phase discipline for understanding the mechanism behind something:
 
-- **`/socratic:ask`** — Claude grills *you* one question at a time, with structured candidate answers + free-text fallback, to surface the mechanism you don't yet see.
-- **`/socratic:think`** — Claude self-grills *silently* over a concept or code path, runs read-only probes to verify, and writes a 9-section `mechanism.md` you can read or commit.
+- **Socratic phase** — ask sharp, discriminative questions to find the gaps. Question quality matters more than quantity.
+- **Feynman phase** — re-articulate the answers as plain-language prose. If you cannot tell the mechanism as a coherent story, you have not understood it; the gap in articulation points back to the next question.
 
-It is **not** a Q&A assistant, a code reviewer, or a planning tool. It is a discipline for asking *few sharp questions* and producing *verifiable mechanism explanations*.
+Two commands, both running both phases:
+
+- **`/socratic:ask`** — Claude grills *you* one question at a time, with structured candidate answers + free-text fallback. At session end, Claude writes a `mechanism.md` whose header is a **Feynman Synthesis** threading your answers into a 4-paragraph story.
+- **`/socratic:think`** — Claude self-grills over a concept or code path, generates a candidate question list, **pauses for you to review/edit the list once**, runs read-only probes, then writes the same `mechanism.md` (Feynman Synthesis at the top + 9-section audit below).
+
+It is **not** a Q&A assistant, a code reviewer, or a planning tool. It is a discipline for asking *few sharp questions* and producing *verifiable mechanism explanations that read as stories*.
 
 ---
 
@@ -29,17 +34,19 @@ Restart Claude Code after install (plugins are not hot-reloaded). Then `/plugin`
 
 ## What it does
 
-| Command | Mode | Who gets grilled | Output |
-|---|---|---|---|
-| `/socratic:ask <concept\|project> <topic>` | live dialogue | you | live Q&A + `.socrates/<ts>/mechanism.md` at session end |
-| `/socratic:think <concept\|project> <topic>` | silent self-grill | Claude | full `.socrates/<ts>/` artifact tree including candidate JSON, probe evidence, and 9-section mechanism model |
+| Command | Mode | Who gets grilled | User touchpoints | Output |
+|---|---|---|---|---|
+| `/socratic:ask <concept\|project> <topic>` | live dialogue | you | answers every question | live Q&A + `.socrates/<ts>/mechanism.md` at session end |
+| `/socratic:think <concept\|project> <topic>` | self-grill + plan review | Claude | **one mandatory review** of the question list before probes run | full `.socrates/<ts>/` artifact tree including candidate JSON, probe evidence, and 9-section mechanism model |
 
 Both commands enforce the same taste rules under the hood:
 
 - **Question budget:** 3–5 hard cap, 7 soft cap, then forced synthesis
-- **Critic gate:** ≥ 8 candidate questions generated, each scored on a two-axis rubric (Paul/Elder type × six PRD quality criteria), only kept questions are asked
+- **Critic gate:** ≥ 8 candidate questions generated, each scored on a two-axis rubric (Paul/Elder type × six quality criteria), only kept questions are asked
 - **Probe execution:** read-only operations auto-run (Read/Grep/Glob/WebSearch/WebFetch/git log); side-effect operations enumerated as "pending probes" requiring approval
-- **Synthesis:** 9-section template (Surface · Pressure · Core mechanism · Why this form · Why not alternatives · Invariants · Failure modes · Evidence · Remaining uncertainty), missing sections labeled `N/A: <reason>` (the absence itself is signal)
+- **Two-pass synthesis:**
+  - **Pass 1** fills 9 audit sections (Surface · Pressure · Core mechanism · Why this form · Why not alternatives · Invariants · Failure modes · Evidence · Remaining uncertainty), each claim tagged `[verified: evidence/NN]` / `[user-asserted]` / `[unverified]` / `[assumption]`.
+  - **Pass 2** writes a **§0 Feynman Synthesis** at the top — 4 paragraphs in SCQA shape (Situation → Complication → Question → Answer), every claim followed by a Toulmin warrant ("because…"), verification tags inherited as inline markers (`^v ^u ^a`), and an explicit anti-alternative clause pointing to §5. Missing sections are not smoothed over — they are named in §0 as gaps and surfaced in §9.
 
 ---
 
@@ -86,7 +93,18 @@ question Q3 should be re-opened with a derivation probe.
 /socratic:think project src/auth
 ```
 
-Project mode runs **fetch-then-think** — Claude first reads README, globs the directory, greps for entry symbols, then generates candidates grounded in what's actually there. Output at `.socrates/<ts>/`:
+Project mode runs **fetch-then-think** — Claude first reads README, globs the directory, greps for entry symbols, then generates candidates grounded in what's actually there.
+
+After candidates are drafted you get a **review checkpoint** — Claude prints the kept question list (with Paul-type and decision-impact for each) plus 2–3 dropped candidates with reasons, and asks via AskUserQuestion:
+
+> How do you want to proceed?
+> - Proceed with these 5 questions (recommended)
+> - Drop some (Other → type IDs to drop, e.g., `drop Q2, Q5`)
+> - Add a question (Other → type your question)
+> - Pivot — regenerate from a different angle (Other → optionally describe the angle)
+> - Skip the question phase, synthesize from priming only
+
+Once you approve, Claude runs the probes and writes the artifacts at `.socrates/<ts>/`:
 
 ```
 .socrates/2026-05-21-1830-think-project-src-auth/
@@ -191,8 +209,19 @@ The skill auto-loads only on `/socratic:*` invocations or explicit mentions of "
 
 ---
 
+## Naming and intellectual debts
+
+The name "Socratic-Feynman" was suggested by the user during dogfooding. It reflects two distinct disciplines fused into one workflow:
+
+- **Socratic** — Paul/Elder's classical taxonomy of six question types (clarification, assumption, evidence, perspective, consequence, meta-question) shapes the critic. Pólya's "Understand the problem" phase shapes the opening ritual. Question quality > quantity is the core taste rule.
+- **Feynman** — the §0 synthesis pass follows the Feynman Technique's central claim: if you cannot explain it plainly to a smart non-specialist, you have not understood it. Structurally, §0 borrows Minto's SCQA from consulting writing, Toulmin's warrant from argumentation theory, and the ladder-of-abstraction (Hayakawa, identified by Pinker as Feynman's signature) for the move between abstract claim and concrete example.
+
+A pure Socratic transcript is a list of Q-and-A — scattered beads. A pure Feynman synthesis without preceding Socratic discipline is confident prose that may smooth over the very gaps you should be naming. The two methods together: ask sharp, synthesize honestly.
+
+---
+
 ## Status
 
-MVP. Dogfooding now. Expect edits to seed banks, candidate-answer rules, and the critic rubric as real friction surfaces. Open an issue (or run `/socratic:think project .` against the skill itself and post the resulting `mechanism.md`) if something feels off.
+MVP. Dogfooding now. Expect edits to seed banks, candidate-answer rules, critic rubric, and the §0 Feynman Synthesis contract as real friction surfaces. Open an issue (or run `/socratic:think project .` against the skill itself and post the resulting `mechanism.md`) if something feels off.
 
-Repo currently private; license TBD pending stabilization.
+Public repo; license TBD pending stabilization.

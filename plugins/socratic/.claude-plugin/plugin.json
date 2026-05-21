@@ -1,7 +1,7 @@
 {
   "name": "socratic",
   "version": "0.1.0",
-  "description": "Socratic-inspired mechanism exploration: grill the user (or self) toward verifiable mechanism understanding using high-taste questioning. Two commands: /socratic:ask (grill user) and /socratic:think (silent self-grill producing a mechanism model).",
+  "description": "The Socratic-Feynman method as a Claude Code plugin. Two-phase mechanism exploration: ask sharp Socratic questions to find the gaps; write a plain-language Feynman synthesis (SCQA + Toulmin warrants) at the top of mechanism.md to verify understanding. /socratic:ask grills the user; /socratic:think self-grills with one user review checkpoint.",
   "keywords": [
     "socratic",
     "questioning",
