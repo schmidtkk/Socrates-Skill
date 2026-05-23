@@ -3,18 +3,19 @@ description: Teaching-mode synthesis pass over a prior Socratic session, with a 
 argument-hint: [session-path]
 ---
 
-Run the **socratic skill in FEYNMAN mode** (teaching-mode synthesis — see SKILL.md §9).
+Run the **socratic skill in FEYNMAN mode** (teaching-mode synthesis — see `skills/socratic/flows/feynman.md`).
 
 Raw arguments: `$ARGUMENTS`
 
 ## What to do
 
 1. Load the skill body at `skills/socratic/SKILL.md` and obey it.
-2. Parse `$ARGUMENTS`:
+2. Load `skills/socratic/flows/feynman.md` and every supporting file it explicitly references.
+3. Parse `$ARGUMENTS`:
    - If a path is given → use that `.socrates/<ts>/` directory as the session.
-   - If empty → detect from conversation context or latest `.socrates/<ts>/` on disk; if none exists, offer cold draft mode from user-provided context (see SKILL.md §9.1-§9.2).
-3. Follow the **FEYNMAN mode flow** in SKILL.md §9 — including session detection, teaching-mode synthesis, interactive failure list, and draft review checkpoint.
-4. Write `conclusion.html` to the resolved `.socrates/<ts>/` directory (SKILL.md §9.6).
+   - If empty → detect from conversation context or latest `.socrates/<ts>/` on disk; if none exists, offer cold draft mode from user-provided context (see `skills/socratic/flows/feynman.md`).
+4. Follow the FEYNMAN flow — including session detection, teaching-mode synthesis, interactive failure list, and draft review checkpoint.
+5. Write `conclusion.html` to the resolved `.socrates/<ts>/` directory.
 
 ## What NOT to do
 

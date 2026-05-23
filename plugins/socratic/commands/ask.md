@@ -10,10 +10,11 @@ Raw arguments: `$ARGUMENTS`
 ## What to do
 
 1. Load the skill body at `skills/socratic/SKILL.md` (relative to this plugin root) and obey it.
-2. Parse `$ARGUMENTS` as: `<topic-mode> <topic>`
+2. Load `skills/socratic/flows/ask.md` and every supporting file it explicitly references.
+3. Parse `$ARGUMENTS` as: `<topic-mode> <topic>`
    - `topic-mode` MUST be one of: `concept` | `project`
    - `topic` is the rest of the line (a quoted string for concept, a path for project)
-3. Follow the "ASK mode flow" section of SKILL.md — do not improvise the flow.
+4. Follow the ASK flow — do not improvise the flow.
 
 ## If arguments invalid
 

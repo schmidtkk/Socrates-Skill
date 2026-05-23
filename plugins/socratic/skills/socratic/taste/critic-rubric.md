@@ -104,6 +104,6 @@ Before issuing the first AskUserQuestion call, run a self-check on the kept Q1:
 - [ ] Could I answer this with one short sentence? If yes, the question is too narrow. Reformulate.
 - [ ] Would *any* answer change my next probe or plan? If no, drop and pick next.
 - [ ] Is there a less-grounded version of this question floating in my candidates I prefer for stylistic reasons? If yes, kill that bias — keep the grounded one.
-- [ ] Does it have the skip/enough/pivot tail line per SKILL.md §2.4? If not, add.
+- [ ] Does it have the skip/enough/pivot tail line per `../contracts/interaction.md`? If not, add.
 
 If any check fails, fix before sending.

@@ -161,7 +161,7 @@ The two phases compose: run `:think` to build a verified evidence base, then `:f
 
 ### What you'll actually see
 
-Every grill question is an `AskUserQuestion` call with 3–4 candidate answers Claude has drafted + Other. The rules Claude follows when drafting those candidates are codified in `SKILL.md §6`:
+Every grill question is an `AskUserQuestion` call with 3–4 candidate answers Claude has drafted + Other. The rules Claude follows when drafting those candidates are codified in `contracts/interaction.md`:
 
 - Each option = a *different* mechanism hypothesis (no two options paraphrase the same idea)
 - No option marked "correct" or "recommended" (this is not a quiz)
@@ -179,14 +179,17 @@ Flow-control keywords work via the Other channel:
 
 ### Architecture
 
-The plugin lives at `plugins/socratic/` and exposes its discipline through `SKILL.md` + a `taste/` directory containing the Paul/Elder taxonomy, quality axes, two-axis critic rubric, and per-topic-mode seed banks. Everything else is convention.
+The plugin lives at `plugins/socratic/`. `SKILL.md` is now a short dispatcher; detailed behavior is split into flows, contracts, synthesis templates, and taste references.
 
 ```
 plugins/socratic/
 ├── .claude-plugin/plugin.json
 ├── commands/{ask,think,feynman}.md
 └── skills/socratic/
-    ├── SKILL.md                    # source of truth — all design decisions encoded
+    ├── SKILL.md                    # short dispatcher + global invariants
+    ├── flows/                      # command-specific state machines
+    ├── contracts/                  # interaction, artifacts, probes, tags
+    ├── synthesis/                  # mechanism.md and conclusion.html templates
     └── taste/
         ├── paul-elder-types.md     # 6 question types, bilingual stems
         ├── quality-axes.md         # 6 quality criteria + scoring rubric
@@ -196,7 +199,7 @@ plugins/socratic/
             └── project.md          # stems for engineering/code topics
 ```
 
-If you want to read the source of truth, start at `plugins/socratic/skills/socratic/SKILL.md`.
+If you want to read the source of truth, start at `plugins/socratic/skills/socratic/SKILL.md`, then follow the relevant `flows/` file.
 
 ### Not for
 
@@ -399,7 +402,7 @@ concept 模式是 **think-then-fetch** —— Claude 先从训练数据生成候
 
 ### 你实际会看到什么
 
-每个 grill 问题都是一次 `AskUserQuestion`，附 3–4 个 Claude 起草的候选 + Other。候选答案的起草规则写在 `SKILL.md §6`：
+每个 grill 问题都是一次 `AskUserQuestion`，附 3–4 个 Claude 起草的候选 + Other。候选答案的起草规则写在 `contracts/interaction.md`：
 
 - 每个选项 = 一个*不同的*机理假设（不允许两个选项换皮说同一件事）
 - 没有任何选项被标"正确"或"推荐"（这不是答题）
@@ -417,14 +420,17 @@ concept 模式是 **think-then-fetch** —— Claude 先从训练数据生成候
 
 ### 架构
 
-插件主体在 `plugins/socratic/`，纪律通过 `SKILL.md` + `taste/` 目录暴露：Paul/Elder 分类法、质量维度、双轴 critic 评分、各模式的 seed 库。其它都是约定。
+插件主体在 `plugins/socratic/`。`SKILL.md` 现在是短 dispatcher；细节拆到 flows、contracts、synthesis 和 taste references。
 
 ```
 plugins/socratic/
 ├── .claude-plugin/plugin.json
 ├── commands/{ask,think,feynman}.md
 └── skills/socratic/
-    ├── SKILL.md                    # 源真理 —— 所有设计决策编码于此
+    ├── SKILL.md                    # 短 dispatcher + 全局不变量
+    ├── flows/                      # 每条命令的状态机
+    ├── contracts/                  # 交互、产物、probe、标签
+    ├── synthesis/                  # mechanism.md / conclusion.html 模板
     └── taste/
         ├── paul-elder-types.md     # 6 类问题，中英 stems
         ├── quality-axes.md         # 6 质量维度 + 评分 rubric
@@ -434,7 +440,7 @@ plugins/socratic/
             └── project.md          # 工程项目 stems
 ```
 
-想看源真理，从 `plugins/socratic/skills/socratic/SKILL.md` 开始。
+想看源真理，从 `plugins/socratic/skills/socratic/SKILL.md` 开始，再跟到对应的 `flows/` 文件。
 
 ### 不适用场景
 

@@ -3,16 +3,17 @@ description: Self-grill with one user review checkpoint after question selection
 argument-hint: <concept|project> <topic>
 ---
 
-Run the **socratic skill in THINK mode** (self-grill with one MANDATORY user review checkpoint after the question list is drafted — see SKILL.md §7.4).
+Run the **socratic skill in THINK mode** (self-grill with one MANDATORY user review checkpoint after the question list is drafted — see `skills/socratic/flows/think.md`).
 
 Raw arguments: `$ARGUMENTS`
 
 ## What to do
 
 1. Load the skill body at `skills/socratic/SKILL.md` and obey it.
-2. Parse `$ARGUMENTS` as: `<topic-mode> <topic>`
+2. Load `skills/socratic/flows/think.md` and every supporting file it explicitly references.
+3. Parse `$ARGUMENTS` as: `<topic-mode> <topic>`
    - `topic-mode` MUST be one of: `concept` | `project`
-3. Follow the "THINK mode flow" section of SKILL.md — including the **mode-split startup**:
+4. Follow the THINK flow — including the **mode-split startup**:
    - `concept` → think-then-fetch (generate candidates from training data, fetch authoritative sources during probe phase)
    - `project` → fetch-then-think (read README/CLAUDE.md, glob top-level, grep key symbols *first*, then generate candidates)
 
