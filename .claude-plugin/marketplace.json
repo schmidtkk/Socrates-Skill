@@ -7,8 +7,8 @@
     {
       "name": "socratic",
       "source": "./plugins/socratic",
-      "description": "The Socratic-Feynman method as a Claude Code plugin. Ask sharp Socratic questions to find the gaps (Paul/Elder × quality-axes critic, candidate-answer drafting). Synthesize plainly (Feynman §0: SCQA paragraphs with Toulmin warrants and verification-tag inheritance) to verify understanding. /socratic:ask grills the user; /socratic:think self-grills with one user review checkpoint.",
-      "version": "0.1.0"
+      "description": "The Socratic-Feynman method as a Claude Code plugin. Three commands: /socratic:ask grills the user one question at a time; /socratic:think self-grills with one user review checkpoint; /socratic:feynman runs a teaching-mode synthesis pass over a prior session or a clearly marked cold draft, surfaces gaps interactively, and writes a human-readable conclusion.html.",
+      "version": "0.2.0"
     }
   ]
 }

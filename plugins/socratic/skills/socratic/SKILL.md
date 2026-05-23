@@ -1,6 +1,6 @@
 ---
 name: socratic
-description: Socratic-Feynman method for mechanism exploration. Loads when the user invokes /socratic:ask or /socratic:think, or explicitly asks for "Socratic questioning", "Feynman synthesis", "mechanism grilling", "help me reveal the mechanism behind X", or "grill me on <topic> through mechanism questions". Do NOT auto-load for general Q&A, debugging, or plan reviews — those are handled by grill-me / Plan / other skills.
+description: Socratic-Feynman method for mechanism exploration. Loads when the user invokes /socratic:ask, /socratic:think, or /socratic:feynman, or explicitly asks for "Socratic questioning", "Feynman synthesis", "mechanism grilling", "help me reveal the mechanism behind X", or "grill me on <topic> through mechanism questions". Do NOT auto-load for general Q&A, debugging, or plan reviews — those are handled by grill-me / Plan / other skills.
 ---
 
 # Socratic Skill — the Socratic-Feynman method
@@ -10,14 +10,15 @@ A two-phase discipline for understanding the mechanism behind something:
 - **Socratic phase (pre-synthesis):** ask sharp, discriminative questions to find the gaps in understanding. Question quality matters more than quantity.
 - **Feynman phase (post-grill):** re-articulate the answers as a plain-language story. If you cannot tell the story coherently, you have not understood — and the gap in articulation becomes the next question.
 
-The plugin exposes two slash commands, both running both phases:
+The plugin exposes three slash commands across two workflows:
 
 | Command | Socratic phase | Feynman phase | User involvement |
 |---|---|---|---|
 | `/socratic:ask <concept\|project> <topic>` | Claude grills the user one question at a time | Claude synthesizes §0 from the user's answers + transcript | answers every grill question |
 | `/socratic:think <concept\|project> <topic>` | Claude grills itself, user reviews the question list once | Claude synthesizes §0 from §1-§9 it filled itself | one review checkpoint on the question list |
+| `/socratic:feynman [session-path]` | — (post-questioning) | Claude re-derives §0 in teaching voice; failure list surfaces gaps interactively | one draft review checkpoint + gap prompts |
 
-Both produce a `mechanism.md` whose header is a **§0 Feynman Synthesis** (4 SCQA paragraphs threading the mechanism into a story), followed by §1-§9 as the structured audit.
+ASK and THINK produce a `mechanism.md` whose header is a **§0 Feynman Synthesis** (4 SCQA paragraphs threading the mechanism into a story), followed by §1-§9 as the structured audit. FEYNMAN consumes a prior session when available and writes `conclusion.html`; in cold-start mode it writes only a clearly downgraded teaching draft.
 
 It is **not** a generic chatbot, code reviewer, or planner. It enforces taste: fewer questions, sharper questions, evidence-grounded synthesis.
 
@@ -63,9 +64,9 @@ The critic checks **both axes** before keeping a question (see `taste/critic-rub
 
 ### 2.1 Question budget
 
-- **Hard cap:** 5 grill questions per session.
-- **Soft cap:** 7 (you may add up to 2 follow-ups if an early answer opens a *new* high-value mechanism gap).
-- **At Q7 you MUST stop questioning** and enter Synthesis, even if uncertainty remains. Unanswered branches go into the *Remaining uncertainty* section.
+- **Target budget:** 3-5 grill questions per session.
+- **Extension budget:** you may ask Q6 or Q7 only if an early answer opens a *new* high-value mechanism gap that changes the synthesis.
+- **Absolute cap:** Q7. At Q7 you MUST stop questioning and enter Synthesis, even if uncertainty remains. Unanswered branches go into the *Remaining uncertainty* section.
 
 The Self-Check ritual (§5.1) does NOT count against the budget — it is structured AskUserQuestion, not a grill question.
 
@@ -94,17 +95,23 @@ Probe outputs go to `.socrates/<ts>/evidence/NN-<short-name>.{txt,json,md}` numb
 
 ### 2.4 Skip / enough / pivot keywords
 
-Every AskUserQuestion you send during a grill session MUST include this line in the question text (after the actual question, on its own line):
+Every ASK-mode grill question MUST include this line in the question text (after the actual question, on its own line):
 
 > You can also pick **Other** and type `skip` (skip this question), `enough` (synthesize now), or `pivot` (regenerate questions from new angle).
 
-When the user's Other response contains those tokens, behave as follows:
+When the user's Other response contains those tokens, handle the control token before the mandatory "why" follow-up:
 
 | Token | Action |
 |---|---|
 | `skip` | Mark this question as `skipped`, move to next kept candidate. |
 | `enough` | Discard remaining candidates, jump to Synthesis (§8). Unasked questions become *Remaining uncertainty* entries. |
 | `pivot` | Discard remaining candidates, re-run candidate generation (§2.2) using accumulated answers as new context, then continue. Pivot consumes 1 question of budget. |
+
+For control-token responses, do NOT ask "why did you pick that?" and do NOT append a normal `{question, answer, why}` transcript item. Append a control event instead, e.g. `{question_id, control: "skip|enough|pivot", raw_other: "..."}`.
+
+THINK review checkpoints (§7.4) and FEYNMAN checkpoints (§9) do NOT use the generic `skip/enough/pivot` tail. They use their own checkpoint-specific options.
+
+**Note on `/socratic:feynman`:** The FEYNMAN mode (§9) is exempt from §2.1 question budget and §2.2 critic gate — it runs no grill questions. It DOES inherit §2.3 probe rules (any probes during session detection must be read-only) and uses AskUserQuestion as its universal interaction surface for all checkpoints and gap prompts.
 
 ---
 
@@ -138,9 +145,12 @@ Every `/socratic:think` run, and every `/socratic:ask` run that completes Synthe
       …
     transcript.md            # ASK mode: the actual Q&A trace
     mechanism.md             # §0 Feynman Synthesis + §1-§9 audit (per §8). Always written at session end.
+    conclusion.html          # FEYNMAN mode: teaching-voice synthesis, human-readable. Written by /socratic:feynman (§9).
 ```
 
 The slug derivation: lowercase the topic, replace non-alphanumerics with `-`, truncate to 40 chars.
+
+FEYNMAN warm path writes `conclusion.html` into the resolved prior session directory. FEYNMAN cold path creates `.socrates/<YYYY-MM-DD-HHMM>-feynman-cold-<topic-slug>/` and writes only `conclusion.html`; it must not fabricate a `mechanism.md` audit.
 
 Don't write anywhere else. Don't write outside `.socrates/`. The `.gitignore` already excludes it.
 
@@ -191,11 +201,12 @@ Persist user's answers to `.socrates/<ts>/self-check.json`:
 
 After each user answer:
 
-1. **Mandatory follow-up** in your chat response: ask the user *why* they picked that option (open text). This restores Socratic openness.
-2. Append `{question, answer, why}` to `transcript.md`.
-3. Check budget — if Q5 reached and no new high-value gap discovered, go to Synthesis. If a new gap appeared, allowed to add Q6 (and at most Q7).
-4. Re-run a *fast* critic on remaining kept candidates given new information. Drop any that are now answered or stale. If too few remain, regenerate.
-5. Pick next highest-impact question.
+1. If the user used **Other**, first inspect it for `skip`, `enough`, or `pivot` (§2.4). Control tokens take priority over the mandatory follow-up.
+2. For a normal selectable answer or non-control Other answer, ask the mandatory follow-up in your chat response: *why did you pick that option?* This restores Socratic openness.
+3. After the user supplies the follow-up, append `{question, answer, why, other_used}` to `transcript.md`.
+4. Check budget — after Q3 you may synthesize if the mechanism is already clear; after Q5 synthesize unless a new high-value gap appeared; Q6-Q7 are extension only, and Q7 is the absolute cap.
+5. Re-run a *fast* critic on remaining kept candidates given new information. Drop any that are now answered or stale. If too few remain, regenerate.
+6. Pick next highest-impact question.
 
 ### 5.4 Synthesis at session end (two passes)
 
@@ -365,23 +376,21 @@ THINK mode is NOT fully silent. After the critic finishes, the user reviews the 
 2. **Issue an AskUserQuestion** asking the user what to do with the list. Exactly one question, with options:
 
    - **Proceed with the N questions as listed** *(recommended if nothing looks off)*
-   - **Drop some questions** — pick Other and type the IDs (e.g., `drop Q2, Q5`)
-   - **Add a question** — pick Other and type your question (e.g., `add: why doesn't this fail under <X>?`)
-   - **Pivot — regenerate from a different angle** — pick Other and optionally describe the angle (e.g., `pivot: focus on failure modes only`)
-   - **Skip-grill — go straight to synthesis** — type `skip-grill` or `synthesize-now` in Other to abandon all questions and synthesize from priming + training knowledge alone (lowest rigor)
+   - **Drop some questions** — follow-up will ask for IDs.
+   - **Add a question** — follow-up will ask for the question text.
+   - **Pivot — regenerate from a different angle** — follow-up will ask for the angle.
+   - **Skip-grill — go straight to synthesis** — abandon all questions and synthesize from priming + training knowledge alone (lowest rigor).
 
-   *Note on keyword choice:* the option above is `skip-grill`, NOT `skip`. The bare `skip` keyword in §2.4 means "skip this single question and move to the next" (ASK mode), so reusing it here would be ambiguous. At the THINK review checkpoint, type `skip-grill` (or `synthesize-now`) when you want to abandon the whole question phase.
-
-   The question text MUST include the §2.4 tail line so the regular `skip / enough / pivot` keywords stay available too.
+   Do NOT include the generic `skip / enough / pivot` tail from §2.4 here. This is a checkpoint, not a single grill question.
 
 3. **Apply the user's decision:**
 
    | User choice | Action |
    |---|---|
    | Proceed | Continue to §7.5 with the kept set unchanged. |
-   | Drop X | For each named ID, set `final_status: "dropped_by_user"`. Continue to §7.5. |
-   | Add Y | Append `{id: "Q-user-1", question: Y, final_status: "added_by_user", quality_scores: null, probe: null}` to `candidates.json`. Run a *fast* critic pass on Y only — if it fails any quality axis, flag in chat ("your added question doesn't pass <axis>; proceed anyway? y/n") but ultimately respect the user's add. **Then immediately derive a concrete probe** for Y (subject to §2.3 read-only rule) and set `probe` to it before continuing. Without this step §7.5 has no probe to run. |
-   | Pivot | Discard current `candidates.json`, regenerate ≥ 8 fresh candidates using the user's angle hint, run critic, GOTO step 1. Pivot is allowed AT MOST ONCE per session; a second pivot request becomes a hard Proceed. |
+   | Drop some questions | Ask one follow-up AskUserQuestion for the IDs to drop. For each named ID, set `final_status: "dropped_by_user"`. Continue to §7.5. |
+   | Add a question | Ask one follow-up AskUserQuestion for the question text. Append `{id: "Q-user-1", question: Y, final_status: "added_by_user", quality_scores: null, probe: null}` to `candidates.json`. Run a *fast* critic pass on Y only — if it fails any quality axis, flag in chat and proceed only after the user confirms. Then immediately derive a concrete probe for Y (subject to §2.3 read-only rule) and set `probe` to it before continuing. |
+   | Pivot | Ask one follow-up AskUserQuestion for the angle. Discard current `candidates.json`, regenerate ≥ 8 fresh candidates using that angle, run critic, GOTO step 1. Pivot is allowed AT MOST ONCE per session; a second pivot request becomes a hard Proceed. |
    | Skip-grill | Mark all `kept` entries as `final_status: "dropped_by_user"`. Skip §7.5 entirely (no probes). Jump to §7.6 Synthesis. In synthesis, every §1-§9 claim that can't be grounded in priming will be tagged `[unverified]` (THINK mode) — including concept-mode sessions which have no priming at all, in which case nearly everything will be `[unverified]` and §0 must say so. |
 
 4. **Update `candidates.json`** on disk to reflect the final statuses.
@@ -551,7 +560,142 @@ If §1-§9 cannot be threaded into 4 coherent paragraphs (contradictory claims, 
 
 ---
 
-## 9. Out of scope (do NOT do these things)
+## 9. FEYNMAN mode flow
+
+`/socratic:feynman` is a **teaching-mode synthesis pass** decoupled from the questioning phase. In warm mode it consumes a prior `:ask` or `:think` session and writes a blog-style `conclusion.html`. In cold mode it can write a lower-confidence teaching draft from user-provided context only, but it must clearly mark the output as ungrilled and unverified.
+
+### 9.1 Session detection
+
+On invocation, resolve the source in this order:
+
+1. **Argument**: if `[session-path]` is provided, use that `.socrates/<ts>/` directory.
+2. **Conversation context**: if no argument, check whether a `:think` or `:ask` session was completed in the current conversation (the model knows what it wrote). Use it if found.
+3. **Disk auto-detect**: if no live session in context, find the latest `.socrates/<ts>/` directory on disk.
+4. **Multiple sessions found** → AskUserQuestion listing the candidates, ask the user which to use.
+5. **No session found** → AskUserQuestion: provide a session path / run cold from user context / cancel and run `/socratic:think` first.
+
+Never fail silently. Every ambiguity surfaces to the user via AskUserQuestion.
+
+### 9.2 Warm vs cold source contract
+
+**Warm path** (prior session exists):
+- `mechanism.md` is REQUIRED. If absent, ask the user for a different session path or offer cold mode.
+- `candidates.json`, `evidence/*`, `priming/*`, `self-check.json`, and `transcript.md` are OPTIONAL. Read them if present; if missing, record the absence in the failure list or evidence section instead of inventing content.
+- Verification markers inherit from `mechanism.md` where possible. Claims from missing optional artifacts are `^u` if stated but unverified, or `^a` if inferred.
+
+**Cold path** (no prior session):
+- AskUserQuestion for the topic and the minimum context the user wants taught.
+- Create `.socrates/<YYYY-MM-DD-HHMM>-feynman-cold-<topic-slug>/`.
+- Write only `conclusion.html`; do NOT fabricate `mechanism.md`, `candidates.json`, or an evidence audit.
+- Put a visible `cold draft` notice near the top of the HTML. All substantive claims default to `^u` or `^a`; recommend running `/socratic:think` to build evidence.
+
+### 9.3 Teaching-mode synthesis contract
+
+Synthesize **as if writing a technical blog post** for this audience:
+
+> A smart reader who knows the field but has never seen this specific design or project before. They are reading to learn, without access to source code or papers. They will read this once, linearly.
+
+This is the **curse-of-knowledge test**: every claim must be followable by someone who does not already know it. The audience is a smart peer, not a child.
+
+**MUST:**
+- Every causal step explicit: "because…" / "which means…" / "so that…"
+- Every new term glossed in the same sentence, or dropped
+- Concrete example per paragraph (ladder of abstraction)
+- Preserve the causal spine: surface situation → pressure/complication → mechanism question → answer. This spine may be implicit in the article structure; do not force four fixed sections.
+- Toulmin warrants on every claim; verification-tag inheritance (`^v` / `^p` / `^u` / `^a`)
+
+**Three failure modes — MUST NOT produce smooth prose; MUST produce failure-list items:**
+
+| Code | Failure | What it reveals |
+|------|---------|-----------------|
+| [F1] | Jargon used without gloss | Writer knows the term; reader doesn't — gap in articulation |
+| [F2] | Circular reasoning ("X because X") | Writer understands X implicitly; couldn't reconstruct it from first principles |
+| [F3] | "Reader must consult source to understand this" | Writer can't explain it — only point to it |
+
+**Project mode — code as evidence:** In `project` mode, code snippets MAY be quoted verbatim as evidence blocks. But every code block MUST be followed by a plain-language interpretation: what this code does, and why it is shaped this way. Quoting code ≠ explaining code.
+
+### 9.4 Interactive failure list
+
+During synthesis, when the model encounters [F1], [F2], or [F3]:
+
+1. Mark it inline: `[F1: "<term>" not glossed]` / `[F2: circular — "<phrase>"]` / `[F3: cannot explain without source]`. Do NOT write smooth prose over it.
+2. After the full draft is complete, handle failures based on count:
+
+   - **≤ 2 failures**: resolve inline, one at a time. One AskUserQuestion per failure:
+     - Options: dig deeper (propose a new :think probe on this sub-topic) / user supplies the explanation / drop this claim / leave as an acknowledged gap in conclusion.html
+   - **≥ 3 failures**: collect all first, organize by type, then issue ONE AskUserQuestion:
+
+     ```
+     Conceptual gaps (F1/F2): [list]
+     Evidence gaps (F3): [list]
+     ```
+
+     Options: tackle all / user picks which to resolve / user supplies bulk answers / leave all as acknowledged gaps
+
+3. Fold any user-supplied explanations back into the synthesis draft before writing the output file.
+
+These failure moments are high-value research signals — they expose the frontier of current understanding. Do NOT hide them. Surface them to the user as collaborative moments.
+
+### 9.5 Draft review checkpoint
+
+After synthesis is drafted (including failure resolution):
+
+Issue ONE AskUserQuestion showing the article draft or a compact excerpt plus outline. Options:
+- Approve — write `conclusion.html`
+- Revise this section — Other: describe the change
+- Add context — Other: supply additional information to fold in
+
+**CRITICAL:** Use AskUserQuestion. Do not stop the conversation. Keep the dialogue alive between draft and final output.
+
+### 9.6 Output: `conclusion.html`
+
+Write `conclusion.html` to the resolved `.socrates/<ts>/` session directory.
+
+Structure:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Feynman Synthesis — {topic}</title>
+  <!-- embedded CSS: readable body font, monospace for code, color-coded verification markers -->
+</head>
+<body>
+  <header>
+    <h1>Feynman Synthesis — {topic}</h1>
+    <p class="meta">Session: {session-path or cold draft directory} · Generated: {date} · Source: {warm|cold}</p>
+    <!-- cold path only: visible warning that this draft has no prior grill/evidence base -->
+  </header>
+
+  <article>
+    <!-- Blog-style teaching document. Use headings that fit the topic; do not force SCQA section labels. -->
+  </article>
+
+  <section id="failure-list">
+    <h2>What could not be explained simply</h2>
+    <!-- F1/F2/F3 items with user resolution notes, or a note that none remain -->
+  </section>
+
+  <section id="evidence">
+    <h2>Evidence</h2>
+    <!-- citations to evidence/ files; code blocks followed by plain-language interpretation -->
+  </section>
+
+  <footer>
+    <p>Verification: {count ^v} verified · {count ^p} user-asserted · {count ^u} unverified · {count ^a} assumption</p>
+  </footer>
+</body>
+</html>
+```
+
+Verification markers render as color-coded superscripts: `^v` green · `^p` blue · `^u` orange · `^a` red.
+
+After writing, print a 3-line chat summary: file path · verification score (% of claims that are `^v`) · count of open failure-list items (0 is ideal).
+
+---
+
+## 10. Out of scope (do NOT do these things)
 
 - Do not attempt `paper` or `task` topic modes — they are not in MVP scope. Reply with the usage hint instead.
 - Do not write outside `.socrates/<ts>/`. Do not modify the host project's code.
@@ -562,7 +706,7 @@ If §1-§9 cannot be threaded into 4 coherent paragraphs (contradictory claims, 
 
 ---
 
-## 10. References inside this plugin
+## 11. References inside this plugin
 
 - `taste/paul-elder-types.md` — six Paul/Elder question categories with stems
 - `taste/quality-axes.md` — PRD's 6 quality criteria, rubric
@@ -572,11 +716,12 @@ If §1-§9 cannot be threaded into 4 coherent paragraphs (contradictory claims, 
 
 ---
 
-## 11. Source
+## 12. Source
 
-This skill is a faithful implementation of the design crystallized in `prd.md` (in the plugin root) with the following deliberate deviations from the PRD:
+This skill originated from local `prd.md` working notes, which are not bundled with the distributable plugin. The current bundled contract deliberately differs from the original PRD in these ways:
 
 - Renamed `/mec` → `/socratic:ask` + `/socratic:think` (clearer namespace).
 - Dropped `paper` and `task` topic modes (paper folded into concept; task overlaps existing `grill-me` skill).
 - Memory layer (PRD §6) removed from MVP — covered by file system + Claude Code memory + ck.
 - Added: AskUserQuestion as primary interaction channel; candidate-answer drafting contract (§6); two-axis taste taxonomy from Paul/Elder + PRD qualities; mode-split THINK startup.
+- Added `/socratic:feynman` as a teaching-mode synthesis command with warm and cold paths.

@@ -1,12 +1,14 @@
 {
   "name": "socratic",
-  "version": "0.1.0",
-  "description": "The Socratic-Feynman method as a Claude Code plugin. Two-phase mechanism exploration: ask sharp Socratic questions to find the gaps; write a plain-language Feynman synthesis (SCQA + Toulmin warrants) at the top of mechanism.md to verify understanding. /socratic:ask grills the user; /socratic:think self-grills with one user review checkpoint.",
+  "version": "0.2.0",
+  "description": "The Socratic-Feynman method as a Claude Code plugin. Three commands: /socratic:ask grills the user one question at a time; /socratic:think self-grills with one user review checkpoint; /socratic:feynman runs a teaching-mode synthesis pass over a prior session or a clearly marked cold draft, surfaces gaps interactively, and writes a human-readable conclusion.html. ASK/THINK share a two-axis critic gate (Paul/Elder × six quality criteria) and a two-pass synthesis (§1–§9 audit + §0 SCQA Feynman Synthesis with Toulmin warrants).",
   "keywords": [
     "socratic",
+    "feynman",
     "questioning",
     "mechanism",
     "metacognition",
-    "critical-thinking"
+    "critical-thinking",
+    "self-learning"
   ]
 }
